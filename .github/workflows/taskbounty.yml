@@ -26,7 +26,7 @@ jobs:
           import urllib.request
           import urllib.error
 
-key = "".join(os.environ.get("TASKBOUNTY_API_KEY", "").split())
+          key = "".join(os.environ.get("TASKBOUNTY_API_KEY", "").split())
 
           if not key:
               print("ERROR: TASKBOUNTY_API_KEY is missing")
