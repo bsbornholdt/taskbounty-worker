@@ -1,1 +1,47 @@
 .github/workflows/taskbounty.yml
+name: TaskBounty API Check
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      TASKBOUNTY_API_KEY: ${{ secrets.TASKBOUNTY_API_KEY }}
+
+    steps:
+      - name: Check secret
+        run: |
+          if [ -z "$TASKBOUNTY_API_KEY" ]; then
+            echo "TASKBOUNTY_API_KEY is missing"
+            exit 1
+          fi
+
+      - name: Query TaskBounty
+        run: |
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $TASKBOUNTY_API_KEY" \
+            "https://www.task-bounty.com/api/v1/tasks?state=open&limit=20" \
+            -o /tmp/tasks.json
+
+          python3 - <<'PY'
+          import json
+
+          with open("/tmp/tasks.json") as f:
+              data = json.load(f)
+
+          tasks = data.get("tasks", [])
+          print(f"SUCCESS: authenticated and found {len(tasks)} open bounties")
+
+          for i, task in enumerate(tasks[:10], 1):
+              amount = task.get("bounty_cents", 0) / 100
+              print(f"{i}. ${amount:.2f} - {task.get('title', 'Untitled')}")
+              print(task.get("github_issue_url", ""))
+          PY
