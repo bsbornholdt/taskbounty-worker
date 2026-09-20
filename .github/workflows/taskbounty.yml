@@ -1,5 +1,4 @@
-.github/workflows/taskbounty.yml
-name: TaskBounty API Check
+TaskBounty API Check
 
 on:
   push:
