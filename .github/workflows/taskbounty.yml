@@ -16,31 +16,66 @@ jobs:
       TASKBOUNTY_API_KEY: ${{ secrets.TASKBOUNTY_API_KEY }}
 
     steps:
-      - name: Check secret
-        run: |
-          if [ -z "$TASKBOUNTY_API_KEY" ]; then
-            echo "TASKBOUNTY_API_KEY is missing"
-            exit 1
-          fi
-
       - name: Query TaskBounty
+        shell: bash
         run: |
-          curl --fail --silent --show-error \
-            -H "Authorization: Bearer $TASKBOUNTY_API_KEY" \
-            "https://www.task-bounty.com/api/v1/tasks?state=open&limit=20" \
-            -o /tmp/tasks.json
-
           python3 - <<'PY'
           import json
+          import os
+          import sys
+          import urllib.request
+          import urllib.error
 
-          with open("/tmp/tasks.json") as f:
-              data = json.load(f)
+          key = os.environ.get("TASKBOUNTY_API_KEY", "").strip()
 
+          if not key:
+              print("ERROR: TASKBOUNTY_API_KEY is missing")
+              sys.exit(1)
+
+          if not key.startswith("tb_live_"):
+              print("ERROR: Secret exists but does not begin with tb_live_")
+              sys.exit(1)
+
+          print("Secret loaded and format looks valid")
+
+          url = "https://www.task-bounty.com/api/v1/tasks?state=open&limit=20"
+
+          request = urllib.request.Request(
+              url,
+              headers={
+                  "Authorization": f"Bearer {key}",
+                  "Accept": "application/json",
+                  "User-Agent": "taskbounty-worker/1.0",
+              },
+          )
+
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  status = response.status
+                  body = response.read().decode("utf-8")
+          except urllib.error.HTTPError as e:
+              body = e.read().decode("utf-8", errors="replace")
+              print(f"TaskBounty HTTP error: {e.code}")
+              print(body[:1000])
+              sys.exit(1)
+          except Exception as e:
+              print(f"TaskBounty connection error: {type(e).__name__}: {e}")
+              sys.exit(1)
+
+          print(f"TaskBounty HTTP status: {status}")
+
+          data = json.loads(body)
           tasks = data.get("tasks", [])
-          print(f"SUCCESS: authenticated and found {len(tasks)} open bounties")
+
+          print(f"SUCCESS: found {len(tasks)} open bounties")
 
           for i, task in enumerate(tasks[:10], 1):
-              amount = task.get("bounty_cents", 0) / 100
+              cents = task.get("bounty_cents") or 0
+              amount = cents / 100
+              print()
               print(f"{i}. ${amount:.2f} - {task.get('title', 'Untitled')}")
+              print(f"Language: {task.get('language', '?')}")
+              print(f"Complexity: {task.get('complexity_tag', '?')}")
               print(task.get("github_issue_url", ""))
+
           PY
